@@ -29,6 +29,8 @@ pub(super) fn compute<Region: Atom, Loan: Atom, Point: Atom>(
         .chain(all_facts.cfg_edge.iter().map(|&(_, q)| q))
         .collect();
 
+    all_facts.simplify_cfg();
+
     for &r in &all_facts.universal_region {
         for &p in &all_points {
             all_facts.region_live_at.push((r, p));
