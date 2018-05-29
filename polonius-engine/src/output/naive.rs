@@ -36,7 +36,11 @@ pub(super) fn compute<Region: Atom, Loan: Atom, Point: Atom>(
 
     for &r in &all_facts.universal_region {
         for &p in &all_points {
-            all_facts.region_live_at.push((r, p));
+            all_facts
+                .region_live_at
+                .entry(p)
+                .or_insert(Vec::new())
+                .push(r);
         }
     }
 
@@ -68,15 +72,30 @@ pub(super) fn compute<Region: Atom, Loan: Atom, Point: Atom>(
         let requires_1 = iteration.variable_indistinct("requires_1");
         let requires_2 = iteration.variable_indistinct("requires_2");
 
-        let killed = all_facts.killed.into();
+        let killed = all_facts
+            .killed
+            .into_iter()
+            .flat_map(|(p, ls)| ls.into_iter().map(move |l| (l, p)))
+            .collect::<Vec<_>>()
+            .into();
         let region_live_at = iteration.variable::<((Region, Point), ())>("region_live_at");
         let cfg_edge_p = iteration.variable::<(Point, Point)>("cfg_edge_p");
 
         // load initial facts.
-        subset.insert(all_facts.outlives.into());
-        requires.insert(all_facts.borrow_region.into());
+        subset.insert(Relation::from(all_facts.outlives.into_iter().flat_map(
+            |(p, rrs)| rrs.into_iter().map(move |(r1, r2)| (r1, r2, p)),
+        )));
+        requires.insert(Relation::from(
+            all_facts
+                .borrow_region
+                .into_iter()
+                .flat_map(|(p, rls)| rls.into_iter().map(move |(r, l)| (r, l, p))),
+        ));
         region_live_at.insert(Relation::from(
-            all_facts.region_live_at.iter().map(|&(r, p)| ((r, p), ())),
+            all_facts
+                .region_live_at
+                .iter()
+                .flat_map(|(&p, rs)| rs.iter().map(move |&r| ((r, p), ()))),
         ));
         cfg_edge_p.insert(all_facts.cfg_edge.clone().into());
 

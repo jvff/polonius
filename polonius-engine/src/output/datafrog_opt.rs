@@ -30,7 +30,11 @@ pub(super) fn compute<Region: Atom, Loan: Atom, Point: Atom>(
 
     for &r in &all_facts.universal_region {
         for &p in &all_points {
-            all_facts.region_live_at.push((r, p));
+            all_facts
+                .region_live_at
+                .entry(p)
+                .or_insert(Vec::new())
+                .push(r);
         }
     }
 
@@ -44,15 +48,24 @@ pub(super) fn compute<Region: Atom, Loan: Atom, Point: Atom>(
 
         // static inputs
         let cfg_edge = iteration.variable::<(Point, Point)>("cfg_edge");
-        let killed = all_facts.killed.into();
+        let killed = all_facts
+            .killed
+            .into_iter()
+            .flat_map(|(p, ls)| ls.into_iter().map(move |l| (l, p)))
+            .collect::<Vec<_>>()
+            .into();
 
         // `invalidates` facts, stored ready for joins
         let invalidates = iteration.variable::<((Loan, Point), ())>("invalidates");
 
         // we need `region_live_at` in both variable and relation forms.
         // (respectively, for join and antijoin).
-        let region_live_at_rel =
-            Relation::from(all_facts.region_live_at.iter().map(|&(r, p)| (r, p)));
+        let region_live_at_rel = Relation::from(
+            all_facts
+                .region_live_at
+                .iter()
+                .flat_map(|(&p, rs)| rs.iter().map(move |&r| (r, p))),
+        );
         let region_live_at_var = iteration.variable::<((Region, Point), ())>("region_live_at");
 
         // variables, indices for the computation rules, and temporaries for the multi-way joins
@@ -99,13 +112,33 @@ pub(super) fn compute<Region: Atom, Loan: Atom, Point: Atom>(
         // load initial facts.
         cfg_edge.insert(all_facts.cfg_edge.into());
         invalidates.insert(Relation::from(
-            all_facts.invalidates.iter().map(|&(p, b)| ((b, p), ())),
+            all_facts
+                .invalidates
+                .iter()
+                .flat_map(|(&p, bs)| bs.iter().map(move |&b| ((b, p), ()))),
         ));
         region_live_at_var.insert(Relation::from(
-            all_facts.region_live_at.iter().map(|&(r, p)| ((r, p), ())),
+            all_facts
+                .region_live_at
+                .iter()
+                .flat_map(|(&p, rs)| rs.iter().map(move |&r| ((r, p), ()))),
         ));
-        subset.insert(all_facts.outlives.into());
-        requires.insert(all_facts.borrow_region.into());
+        subset.insert(
+            all_facts
+                .outlives
+                .into_iter()
+                .flat_map(|(p, rrs)| rrs.into_iter().map(move |(r1, r2)| (r1, r2, p)))
+                .collect::<Vec<_>>()
+                .into(),
+        );
+        requires.insert(
+            all_facts
+                .borrow_region
+                .into_iter()
+                .flat_map(|(p, rls)| rls.into_iter().map(move |(r, l)| (r, l, p)))
+                .collect::<Vec<_>>()
+                .into(),
+        );
 
         // .. and then start iterating rules!
         while iteration.changed() {

@@ -7,7 +7,7 @@ pub struct AllFacts<R: Atom, L: Atom, P: Atom> {
     /// `borrow_region(R, B, P)` -- the region R may refer to data
     /// from borrow B starting at the point P (this is usually the
     /// point *after* a borrow rvalue)
-    pub borrow_region: Vec<(R, L, P)>,
+    pub borrow_region: HashMap<P, Vec<(R, L)>>,
 
     /// `universal_region(R)` -- this is a "free region" within fn body
     pub universal_region: Vec<R>,
@@ -16,16 +16,16 @@ pub struct AllFacts<R: Atom, L: Atom, P: Atom> {
     pub cfg_edge: Vec<(P, P)>,
 
     /// `killed(B,P)` when some prefix of the path borrowed at B is assigned at point P
-    pub killed: Vec<(L, P)>,
+    pub killed: HashMap<P, Vec<L>>,
 
     /// `outlives(R1, R2, P)` when we require `R1@P: R2@P`
-    pub outlives: Vec<(R, R, P)>,
+    pub outlives: HashMap<P, Vec<(R, R)>>,
 
     /// `region_live_at(R, P)` when the region R appears in a live variable at P
-    pub region_live_at: Vec<(R, P)>,
+    pub region_live_at: HashMap<P, Vec<R>>,
 
     ///  `invalidates(P, L)` when the loan L is invalidated at point P
-    pub invalidates: Vec<(P, L)>,
+    pub invalidates: HashMap<P, Vec<L>>,
 }
 
 impl<Region: Atom, Loan: Atom, Point: Atom> AllFacts<Region, Loan, Point> {
@@ -117,56 +117,32 @@ impl<Region: Atom, Loan: Atom, Point: Atom> AllFacts<Region, Loan, Point> {
             && self.invalidates_at(second).is_empty()
     }
 
-    fn live_regions_at(&self, desired_point: Point) -> Vec<&Region> {
+    fn live_regions_at(&self, point: Point) -> Vec<&Region> {
         self.region_live_at
-            .iter()
-            .filter_map(|(region, point)| {
-                if *point == desired_point {
-                    Some(region)
-                } else {
-                    None
-                }
-            })
-            .collect()
+            .get(&point)
+            .map(|live_regions| live_regions.iter().collect())
+            .unwrap_or_else(|| Vec::new())
     }
 
-    fn killed_loans_at(&self, desired_point: Point) -> Vec<&Loan> {
+    fn killed_loans_at(&self, point: Point) -> Vec<&Loan> {
         self.killed
-            .iter()
-            .filter_map(|(loan, point)| {
-                if *point == desired_point {
-                    Some(loan)
-                } else {
-                    None
-                }
-            })
-            .collect()
+            .get(&point)
+            .map(|killed| killed.iter().collect())
+            .unwrap_or_else(|| Vec::new())
     }
 
-    fn outlives_at(&self, desired_point: Point) -> Vec<(&Region, &Region)> {
+    fn outlives_at(&self, point: Point) -> Vec<&(Region, Region)> {
         self.outlives
-            .iter()
-            .filter_map(|(first_region, second_region, point)| {
-                if *point == desired_point {
-                    Some((first_region, second_region))
-                } else {
-                    None
-                }
-            })
-            .collect()
+            .get(&point)
+            .map(|outlives| outlives.iter().collect())
+            .unwrap_or_else(|| Vec::new())
     }
 
-    fn invalidates_at(&self, desired_point: Point) -> Vec<&Loan> {
+    fn invalidates_at(&self, point: Point) -> Vec<&Loan> {
         self.invalidates
-            .iter()
-            .filter_map(|(point, loan)| {
-                if *point == desired_point {
-                    Some(loan)
-                } else {
-                    None
-                }
-            })
-            .collect()
+            .get(&point)
+            .map(|invalidates| invalidates.iter().collect())
+            .unwrap_or_else(|| Vec::new())
     }
 
     fn collapse_edge(&mut self, first: Point, second: Point) {
@@ -186,11 +162,11 @@ impl<Region: Atom, Loan: Atom, Point: Atom> AllFacts<Region, Loan, Point> {
     }
 
     fn collapse_edge_keeping_first_point(&mut self, first: Point, second: Point) {
-        self.borrow_region.retain(|(_r, _l, p)| *p != second);
-        self.killed.retain(|(_l, p)| *p != second);
-        self.outlives.retain(|(_r1, _r2, p)| *p != second);
-        self.region_live_at.retain(|(_r, p)| *p != second);
-        self.invalidates.retain(|(p, _l)| *p != second);
+        self.borrow_region.remove(&second);
+        self.killed.remove(&second);
+        self.outlives.remove(&second);
+        self.region_live_at.remove(&second);
+        self.invalidates.remove(&second);
 
         self.cfg_edge.retain(|(_p, q)| *q != second);
 
@@ -202,11 +178,11 @@ impl<Region: Atom, Loan: Atom, Point: Atom> AllFacts<Region, Loan, Point> {
     }
 
     fn collapse_edge_keeping_second_point(&mut self, first: Point, second: Point) {
-        self.borrow_region.retain(|(_r, _l, p)| *p != first);
-        self.killed.retain(|(_l, p)| *p != first);
-        self.outlives.retain(|(_r1, _r2, p)| *p != first);
-        self.region_live_at.retain(|(_r, p)| *p != first);
-        self.invalidates.retain(|(p, _l)| *p != first);
+        self.borrow_region.remove(&first);
+        self.killed.remove(&first);
+        self.outlives.remove(&first);
+        self.region_live_at.remove(&first);
+        self.invalidates.remove(&first);
 
         self.cfg_edge.retain(|(p, _q)| *p != first);
 
@@ -221,13 +197,13 @@ impl<Region: Atom, Loan: Atom, Point: Atom> AllFacts<Region, Loan, Point> {
 impl<R: Atom, L: Atom, P: Atom> Default for AllFacts<R, L, P> {
     fn default() -> Self {
         AllFacts {
-            borrow_region: Vec::default(),
+            borrow_region: HashMap::default(),
             universal_region: Vec::default(),
             cfg_edge: Vec::default(),
-            killed: Vec::default(),
-            outlives: Vec::default(),
-            region_live_at: Vec::default(),
-            invalidates: Vec::default(),
+            killed: HashMap::default(),
+            outlives: HashMap::default(),
+            region_live_at: HashMap::default(),
+            invalidates: HashMap::default(),
         }
     }
 }

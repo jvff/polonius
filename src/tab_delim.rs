@@ -1,5 +1,6 @@
 use crate::facts::AllFacts;
 use crate::intern::{InternTo, InternerTables};
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{self, prelude::*};
 use std::path::Path;
@@ -17,13 +18,19 @@ crate fn load_tab_delimited_facts(
     facts_dir: &Path,
 ) -> io::Result<AllFacts> {
     macro_rules! load_facts {
-        (from ($tables:expr, $facts_dir:expr) load AllFacts { $($t:ident,)* }) => {
+        (from ($tables:expr, $facts_dir:expr) load AllFacts { $($t:ident $( : $bind:pat => $map:expr)*,)* }) => {
             Ok(AllFacts {
                 $(
                     $t: {
                         let filename = format!("{}.facts", stringify!($t));
                         let facts_file = $facts_dir.join(&filename);
                         load_tab_delimited_file($tables, &facts_file)?
+                            $(.into_iter()
+                                .map(|$bind| $map)
+                                .fold(HashMap::new(), |mut map, (k, v)| {
+                                    map.entry(k).or_insert(Vec::new()).push(v);
+                                    map
+                                }))*
                     },
                 )*
             })
@@ -32,13 +39,13 @@ crate fn load_tab_delimited_facts(
 
     load_facts! {
         from (tables, facts_dir) load AllFacts {
-            borrow_region,
+            borrow_region: (r, l, p) => (p, (r, l)),
             universal_region,
             cfg_edge,
-            killed,
-            outlives,
-            region_live_at,
-            invalidates,
+            killed: (l, p) => (p, l),
+            outlives: (r1, r2, p) => (p, (r1, r2)),
+            region_live_at: (r, p) => (p, r),
+            invalidates: (p, l) => (p, l),
         }
     }
 }

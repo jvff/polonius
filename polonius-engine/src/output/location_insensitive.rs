@@ -29,7 +29,11 @@ pub(super) fn compute<Region: Atom, Loan: Atom, Point: Atom>(
 
     for &r in &all_facts.universal_region {
         for &p in &all_points {
-            all_facts.region_live_at.push((r, p));
+            all_facts
+                .region_live_at
+                .entry(p)
+                .or_insert(Vec::new())
+                .push(r);
         }
     }
 
@@ -55,18 +59,36 @@ pub(super) fn compute<Region: Atom, Loan: Atom, Point: Atom>(
 
         // subset(R1, R2) :- outlives(R1, R2, _P)
         subset.insert(Relation::from(
-            all_facts.outlives.iter().map(|&(r1, r2, _p)| (r1, r2)),
+            all_facts
+                .outlives
+                .iter()
+                .flat_map(|(_p, rs)| rs.iter().cloned())
+                .collect::<Vec<_>>(),
         ));
 
         // requires(R, B) :- borrow_region(R, B, _P).
         requires.insert(Relation::from(
-            all_facts.borrow_region.iter().map(|&(r, b, _p)| (r, b)),
+            all_facts
+                .borrow_region
+                .iter()
+                .flat_map(|(_p, rbs)| rbs.iter().cloned())
+                .collect::<Vec<_>>(),
         ));
 
-        region_live_at.insert(all_facts.region_live_at.into());
+        region_live_at.insert(Relation::from(
+            all_facts
+                .region_live_at
+                .into_iter()
+                .flat_map(|(p, rs)| rs.into_iter().map(move |r| (r, p)))
+                .collect::<Vec<_>>(),
+        ));
 
         invalidates.insert(Relation::from(
-            all_facts.invalidates.iter().map(|&(p, b)| ((b, p), ())),
+            all_facts
+                .invalidates
+                .iter()
+                .flat_map(|(&p, bs)| bs.iter().map(move |&b| ((b, p), ())))
+                .collect::<Vec<_>>(),
         ));
 
         // .. and then start iterating rules!
