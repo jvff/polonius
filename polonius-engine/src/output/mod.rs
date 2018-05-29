@@ -49,10 +49,11 @@ where
     pub fn compute(
         all_facts: &AllFacts<Region, Loan, Point>,
         algorithm: Algorithm,
+        simplify_cfg: bool,
         dump_enabled: bool,
     ) -> Self {
         match algorithm {
-            Algorithm::Naive => naive::compute(dump_enabled, all_facts.clone()),
+            Algorithm::Naive => naive::compute(dump_enabled, simplify_cfg, all_facts.clone()),
             Algorithm::DatafrogOpt => datafrog_opt::compute(dump_enabled, all_facts.clone()),
             Algorithm::LocationInsensitive => {
                 location_insensitive::compute(dump_enabled, all_facts.clone())

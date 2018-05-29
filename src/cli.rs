@@ -38,6 +38,8 @@ pub struct Opt {
         raw(possible_values = "&AlgorithmOpts::variants()", case_insensitive = "true")
     )]
     algorithm: AlgorithmOpts,
+    #[structopt(long = "simplify-cfg")]
+    simplify_cfg: bool,
     #[structopt(long = "skip-tuples")]
     skip_tuples: bool,
     #[structopt(long = "skip-timing")]
@@ -61,7 +63,8 @@ pub fn main(opt: Opt) -> Result<(), Error> {
                 let all_facts =
                     tab_delim::load_tab_delimited_facts(tables, &Path::new(&facts_dir))?;
                 let algorithm = opt.algorithm.into();
-                timed(|| Output::compute(&all_facts, algorithm, verbose))
+                let simplify_cfg = opt.simplify_cfg;
+                timed(|| Output::compute(&all_facts, algorithm, simplify_cfg, verbose))
             };
 
             match result {

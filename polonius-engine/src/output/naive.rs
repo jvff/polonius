@@ -20,6 +20,7 @@ use datafrog::{Iteration, Relation};
 
 pub(super) fn compute<Region: Atom, Loan: Atom, Point: Atom>(
     dump_enabled: bool,
+    simplify_cfg: bool,
     mut all_facts: AllFacts<Region, Loan, Point>,
 ) -> Output<Region, Loan, Point> {
     let all_points: BTreeSet<Point> = all_facts
@@ -29,7 +30,9 @@ pub(super) fn compute<Region: Atom, Loan: Atom, Point: Atom>(
         .chain(all_facts.cfg_edge.iter().map(|&(_, q)| q))
         .collect();
 
-    all_facts.simplify_cfg();
+    if simplify_cfg {
+        all_facts.simplify_cfg();
+    }
 
     for &r in &all_facts.universal_region {
         for &p in &all_points {
