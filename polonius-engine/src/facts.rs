@@ -235,3 +235,73 @@ impl<R: Atom, L: Atom, P: Atom> Default for AllFacts<R, L, P> {
 pub trait Atom: From<usize> + Into<usize> + Copy + Clone + Eq + Ord + Hash + 'static {
     fn index(self) -> usize;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    impl Atom for usize {
+        fn index(self) -> usize {
+            self
+        }
+    }
+
+    #[test]
+    fn short_chain() {
+        assert_reduction(vec![(0, 1), (1, 2)], vec![(0, 2)]);
+    }
+
+    #[test]
+    fn long_chain() {
+        assert_reduction(
+            vec![(0, 1), (1, 2), (2, 3), (3, 4), (4, 5), (5, 6)],
+            vec![(0, 6)],
+        );
+    }
+
+    #[test]
+    fn two_chains() {
+        assert_reduction(
+            vec![(0, 1), (1, 2), (2, 3), (4, 5), (5, 6)],
+            vec![(0, 3), (4, 6)],
+        );
+    }
+
+    #[test]
+    fn chain_with_fork() {
+        assert_reduction(
+            vec![(0, 1), (1, 2), (2, 3), (3, 4), (2, 5), (5, 6)],
+            vec![(0, 4), (0, 6)],
+        );
+    }
+
+    #[test]
+    fn chain_with_loop() {
+        assert_reduction(
+            vec![
+                (0, 1),
+                (1, 2),
+                (2, 3),
+                (3, 4),
+                (4, 5),
+                (5, 6),
+                (6, 7),
+                (7, 8),
+                (8, 9),
+                (3, 10),
+                (10, 11),
+                (11, 8),
+            ],
+            vec![(0, 4), (4, 9), (0, 10), (10, 9)],
+        );
+    }
+
+    fn assert_reduction(original: Vec<(usize, usize)>, reduced: Vec<(usize, usize)>) {
+        let mut facts = <AllFacts<usize, usize, usize>>::default();
+
+        facts.cfg_edge.extend(original);
+        facts.simplify_cfg();
+
+        assert_eq!(facts.cfg_edge, reduced);
+    }
+}
